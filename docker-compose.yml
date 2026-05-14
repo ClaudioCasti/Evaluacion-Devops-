@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+
+  # ── Base de datos MySQL ───────────────────────────────
+  mysql-db:
+    image: mysql:8.0
+    container_name: innovatech-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: despachos_db
+    volumes:
+      - mysql_data:/var/lib/mysql        # persistencia
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # script inicial
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  # ── Backend Despachos ─────────────────────────────────
+  backend-despachos:
+    build:
+      context: ./backend-despachos
+      dockerfile: Dockerfile
+    container_name: innovatech-despachos
+    restart: unless-stopped
+    environment:
+      DB_ENDPOINT: mysql-db
+      DB_PORT: 3306
+      DB_NAME: despachos_db
+      DB_USERNAME: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    networks:
+      - backend-network
+    expose:
+      - "8081"                           # solo red interna
+
+  # ── Backend Ventas ────────────────────────────────────
+  backend-ventas:
+    build:
+      context: ./backend-ventas
+      dockerfile: Dockerfile
+    container_name: innovatech-ventas
+    restart: unless-stopped
+    environment:
+      DB_ENDPOINT: mysql-db
+      DB_PORT: 3306
+      DB_NAME: ventas_db
+      DB_USERNAME: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    networks:
+      - backend-network
+    expose:
+      - "8080"                           # solo red interna
+
+  # ── Frontend (único expuesto a Internet) ──────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: innovatech-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"                          # ÚNICO puerto expuesto
+    depends_on:
+      - backend-despachos
+      - backend-ventas
+    networks:
+      - backend-network
+
+volumes:
+  mysql_data:                            # persistencia de datos
+
+networks:
+  backend-network:
+    driver: bridge                       # red interna
